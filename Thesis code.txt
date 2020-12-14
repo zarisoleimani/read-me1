@@ -1,0 +1,643 @@
+## HES CODE
+
+# for-loop to calculate following variables for each year (2006 -2015)
+
+## each individual has lDINA=wDINA+cDINA, 
+## wDINA= individual's wage each year*(Average National Wage Income/average wage income regarding to micro-data)
+## cDINA=individual's capital income each year*(Average National Capital Income/ average capital income in micro-data)
+## DINA=SUM(lDAINA)
+
+
+
+HES<- data.frame(hes_inc_year_nbr=c(2006:2015),)
+                 
+
+for (i in c(2006:2015)) {
+  
+  # each individual might have income from different sources (either WAGE or CAPITAL)
+  # finding sum of income from identical sources to calculate wDINA, cDINA and lDINA for each individual 
+  
+  yi<- filter(DINADATAf, hes_inc_year_nbr==i )
+  sample0<- aggregate(hes_inc_amount_amt~snz_hes_uid, data=yi, FUN=sum)
+  
+  # number of individuals in survay each year
+  HES$numberofmicroindividuals[HES$hes_inc_year_nbr==i]<- length(sample0$snz_hes_uid)
+  
+  
+  # selecting  incomes only from wage source using source income's codes
+  
+  ## wage source
+  
+  yiwage<- filter(yi, str_detect(hes_inc_income_source_code, '^1.1.|^1.3.'))
+  
+  ## 70% OF SELF-Employment consider as Wage & Salary
+  
+  yi0wage<- filter(yi, str_detect(hes_inc_income_source_code, '^1.2.'))
+  yi0wage$hes_inc_amount_amt<- 0.7*(yi0wage$hes_inc_amount_amt)
+  
+  yiTOTALwage<- rbind(yiwage,yi0wage)
+  
+  
+  
+  # average wage for each year based on micro-data
+  sample1<- aggregate(hes_inc_amount_amt~snz_hes_uid, data=yiTOTALwage, FUN=sum)
+  
+  
+  HES$totalmicrowage[HES$hes_inc_year_nbr==i]<- sum(sample1$hes_inc_amount_amt)
+  
+  HES$averagemicrowage[HES$hes_inc_year_nbr==i]<- (HES$totalmicrowage[HES$hes_inc_year_nbr==i])/(HES$numberofmicroindividuals[HES$hes_inc_year_nbr==i])
+  
+  
+  # average National Wage
+  HES$averagenationalwage[HES$hes_inc_year_nbr==i]<- mean(yi$`Compensation Of Employees - received`[yi$hes_inc_year_nbr==i])/ mean(yi$POPULATION[yi$hes_inc_year_nbr==i])
+  
+  
+  # DINA scale for wage: WDINA=(Average National Wage Income/average wage income regarding to the micro-data)
+  WDINA<- (HES$averagenationalwage[HES$hes_inc_year_nbr==i])/(HES$averagemicrowage[HES$hes_inc_year_nbr==i])
+  
+  
+  # individual's weighted wage using WDINA as a scale
+  sample1$wDINA<- (sample1$hes_inc_amount_amt)*WDINA
+  
+  
+  
+  
+  ## capital source
+  yicapital<- filter(yi, str_detect(hes_inc_income_source_code, '^2.|4.2.0.01|4.2.0.05|5.1.0.01|5.1.0.02|5.1.0.03|5.1.0.04|5.1.0.09'))
+  
+  ## 30% OF SELF-Employment consider as Capital income
+  
+  yi0capital<- filter(yi, str_detect(hes_inc_income_source_code, '^1.2.'))
+  
+  yi0capital$hes_inc_amount_amt<- 0.3*(yi0capital$hes_inc_amount_amt)
+  
+  yiTOTALcapital<- rbind(yicapital,yi0capital)
+  
+  
+  
+  # average capital income for each year based on the micro-data
+  sample2<- aggregate(hes_inc_amount_amt~snz_hes_uid, data=yiTOTALcapital, FUN=sum)
+  
+  
+  
+  HES$totalmicrocapitalincome[HES$hes_inc_year_nbr==i]<- sum(sample2$hes_inc_amount_amt)
+  
+  HES$averagemicrocapitalincome[HES$hes_inc_year_nbr==i]<- (HES$totalmicrocapitalincome[HES$hes_inc_year_nbr==i])/(HES$numberofmicroindividuals[HES$hes_inc_year_nbr==i])
+  
+  
+  
+  # average National Capital income
+  HES$averagenationalcapitalincome[HES$hes_inc_year_nbr==i]<-  mean(yi$CapitalIncome[yi$hes_inc_year_nbr==i])/ mean(yi$POPULATION[yi$hes_inc_year_nbr==i])
+  
+  
+  # DINA scale for capitalincome: CDINA=(Average National Capital Income/average capital income regarding to the micro-data)
+  CDINA<- (HES$averagenationalcapitalincome[HES$hes_inc_year_nbr==i])/(HES$averagemicrocapitalincome[HES$hes_inc_year_nbr==i])
+  
+  
+  # individual's weighted capital income using CDINA as a scale
+  sample2$cDINA<- (sample2$hes_inc_amount_amt)*CDINA
+  
+  
+  
+  # lDINA=wDINA+cDINA
+  sample3<- merge(sample1, sample2, by="snz_hes_uid" , all=TRUE)  
+  
+  sample3[is.na(sample3)]<- 0
+  
+  
+  sample3$lDINA<- sample3$wDINA+sample3$cDINA
+  
+  
+  yi$lDINAindividuals<- sample3$lDINA[match(yi$snz_hes_uid, sample3$snz_hes_uid)]
+  
+  
+  # lDINA percentiles
+  
+  sample4<- aggregate(lDINAindividuals~snz_hes_uid, data=yi, FUN=mean)
+  
+  HES$bottom50thpercentile[HES$hes_inc_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.50)
+  HES$bottom90thpercentile[HES$hes_inc_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.90)
+  HES$bottom99thpercentile[HES$hes_inc_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.99)
+  
+  
+  yi1<- filter(sample3,lDINA<= HES$bottom50thpercentile[HES$hes_inc_year_nbr==i])
+  HES$DINAbottom50percentiles[HES$hes_inc_year_nbr==i]<- (sum(yi1$lDINA)/sum(sample3$lDINA))*100
+  
+  
+  yi2<- filter(sample3,lDINA<= HES$bottom90thpercentile[HES$hes_inc_year_nbr==i])
+  HES$DINAbottom90thpercentile[HES$hes_inc_year_nbr==i]<- (sum(yi2$lDINA)/sum(sample3$lDINA))*100
+  
+  
+  yi3<- filter(sample3,  lDINA<= HES$bottom99thpercentile[HES$hes_inc_year_nbr==i])
+  HES$DINAbottom99thpercentile[HES$hes_inc_year_nbr==i]<- (sum(yi3$lDINA)/sum(sample3$lDINA))*100
+  
+  HES$DINAmiddleclass[HES$hes_inc_year_nbr==i]<- (HES$DINAbottom90thpercentile[HES$hes_inc_year_nbr==i])-(HES$DINAbottom50percentiles[HES$hes_inc_year_nbr==i])
+  
+  HES$DINAtop1thpercentile[HES$hes_inc_year_nbr==i]<- 100-(HES$DINAbottom99thpercentile[HES$hes_inc_year_nbr==i])
+  
+  HES$DINAtop10percentiles[HES$hes_inc_year_nbr==i]<- 100-(HES$DINAbottom90thpercentile[HES$hes_inc_year_nbr==i])
+  
+  # othertop9percentiles= percentiles90th to 99th
+  HES$DINAtop9otherpercentiles[HES$hes_inc_year_nbr==i]<- (HES$DINAbottom99thpercentile[HES$hes_inc_year_nbr==i])-(HES$DINAbottom90thpercentile[HES$hes_inc_year_nbr==i])
+  
+  
+  
+  ## contribution of females in DINA of mentioned percentiles
+  yif<- filter(yi, hes_inc_sex_snz_code==2)
+  
+  sample5<- aggregate(lDINAindividuals~snz_hes_uid, data=yif, FUN=mean)
+  
+  yif1<- filter(sample5,lDINAindividuals<= HES$bottom50thpercentile[HES$hes_inc_year_nbr==i])
+  HES$femaleshareofDINAbottom50percentiles[HES$hes_inc_year_nbr==i]<- (sum(yif1$lDINAindividuals)/sum(yi1$lDINA))*100
+  
+  
+  yif2<- filter(sample5,lDINAindividuals<= HES$bottom90thpercentile[HES$hes_inc_year_nbr==i])
+  HES$femaleshareofDINAbottom90thpercentile[HES$hes_inc_year_nbr==i]<- (sum(yif2$lDINAindividuals)/sum(yi2$lDINA))*100
+  
+  
+  yif3<- filter(sample5,lDINAindividuals<= HES$bottom99thpercentile[HES$hes_inc_year_nbr==i])
+  HES$femaleshareofDINAbottom99thpercentile[HES$hes_inc_year_nbr==i]<- (sum(yif3$lDINAindividuals)/sum(yi3$lDINA))*100
+  
+  
+  HES$femaleshareofDINAtop1thpercentile[HES$hes_inc_year_nbr==i]<- ((sum(sample5$lDINAindividuals)-sum(yif3$lDINAindividuals))/(sum(sample3$lDINA)-sum(yi3$lDINA)))*100
+  
+  HES$femaleshareofDINAtop10percentiles[HES$hes_inc_year_nbr==i]<- ((sum(sample5$lDINAindividuals)-sum(yif2$lDINAindividuals))/(sum(sample3$lDINA)-sum(yi2$lDINA)))*100 
+  
+  HES$femaleshareofDINAothertop9percentiles[HES$hes_inc_year_nbr==i]<- ((sum(yif3$lDINAindividuals)-sum(yif2$lDINAindividuals))/(sum(yi3$lDINA)-sum(yi2$lDINA)))*100
+  
+  HES$femaleshareofDINAmiddlesclass[HES$hes_inc_year_nbr==i]<- ((sum(yif2$lDINAindividuals)-sum(yif1$lDINAindividuals))/(sum(yi2$lDINA)-sum(yi1$lDINA)))*100
+  
+  
+  
+}
+
+HES
+
+# visualizing the results:
+
+DINAbottom50percentiles<- c(HES$DINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+DINAtop1thpercentile<- c(HES$DINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+
+DINAmiddleclass<- c(HES$DINAmiddleclass[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+DINAtop10percentiles<- c(HES$DINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+DINAtop9otherpercentiles<- c(HES$DINAtop9otherpercentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+graph<- data.frame(supp=rep(c("DINAbottom50percentiles","DINAtop1thpercentile","DINAmiddleclass","DINAtop10percentiles","DINAtop9otherpercentiles"), each=10),
+                   year=rep(c("2006","2007","2008","2009","2010","2011","2012","2013","2014","2015"),5),
+                   DINA=c(HES$DINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015],
+                          HES$DINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015],
+                          HES$DINAmiddleclass[HES$hes_inc_year_nbr==2006:2015],
+                          HES$DINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015],
+                          HES$DINAtop9otherpercentiles[HES$hes_inc_year_nbr==2006:2015])
+)
+
+
+ggplotDINA<- ggplot(data=graph, aes(x=year ,y= DINA, group=supp, colour=supp))+
+  geom_line()+
+  geom_point()
+
+
+ggplotDINA
+
+## result's graphs for female share of DINA of each considered percentiles
+
+femaleshareofDINAbottom50percentiles<- c(HES$femaleshareofDINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015]) 
+year<- c(2006:2015) 
+
+femaleshareofDINAtop1thpercentile<- c(HES$femaleshareofDINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+femaleshareofDINAmiddleclass<- c(HES$femaleshareofDINAmiddleclass[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+femaleshareofDINAtop10percentiles<- c(HES$femaleshareofDINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015) 
+
+
+femaleshareofDINAothertop9percentiles<- c(HES$femaleshareofDINAothertop9percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+
+
+graphf<- data.frame(supp=rep(c("femaleshareofDINAbottom50percentiles","femaleshareofDINAtop1thpercentile","femaleshareofDINAmiddleclass","femaleshareofDINAtop10percentiles","femaleshareofDINAothertop9percentiles"), each=10),
+                    year=rep(c("2006","2007","2008","2009","2010","2011","2012","2013","2014","2015"),5),
+                    female.share.of.DINA.of.considered.percentiles=c(HES$femaleshareofDINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015],
+                                                                     HES$femaleshareofDINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015],
+                                                                     HES$femaleshareofDINAmiddlesclass[HES$hes_inc_year_nbr==2006:2015],
+                                                                     HES$femaleshareofDINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015],
+                                                                     HES$femaleshareofDINAothertop9percentiles[HES$hes_inc_year_nbr==2006:2015]
+                    ))
+
+
+
+ggplotfemaleshareofDINAofeachpercentile<- ggplot(data=graphf, aes(x=year ,y=female.share.of.DINA.of.considered.percentiles, group=supp, colour=supp))+
+  geom_line()+
+  geom_point()
+
+ggplotfemaleshareofDINA  
+
+## result's graphs for wage share of DINA for each considered percentiles
+
+wageshareofDINAbottom50percentiles<- c(HES$wageshareofDINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015]) 
+year<- c(2006:2015) 
+
+wageshareofDINAtop1thpercentile<- c(HES$wageshareofDINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+wageshareofDINAmiddleclass<- c(HES$wageshareofDINAmiddlesclass[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+wageshareofDINAtop10percentiles<- c(HES$wageshareofDINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+wageshareofDINAothertop9percentiles<- c(HES$wageshareofDINAothertop9percentiles[HES$hes_inc_year_nbr==2006:2015])
+year<- c(2006:2015)
+
+
+
+graphw<- data.frame(supp=rep(c("wageshareofDINAbottom50percentiles","wageshareofDINAtop1thpercentile","wageshareofDINAmiddleclass","wageshareofDINAtop10percentiles","wageshareofDINAothertop9percentiles"), each=10),
+                    year=rep(c("2006","2007","2008","2009","2010","2011","2012","2013","2014","2015"),5),
+                    wage.share.of.DINA.of.considered.percentiles=c(HES$wageshareofDINAbottom50percentiles[HES$hes_inc_year_nbr==2006:2015],
+                                                                   HES$wageshareofDINAtop1thpercentile[HES$hes_inc_year_nbr==2006:2015],
+                                                                   HES$wageshareofDINAmiddleclass[HES$hes_inc_year_nbr==2006:2015],
+                                                                   HES$wageshareofDINAtop10percentiles[HES$hes_inc_year_nbr==2006:2015],
+                                                                   HES$wageshareofDINAothertop9percentiles[HES$hes_inc_year_nbr==2006:2015]))
+
+
+
+ggplotwageshareofDINAofeachpercentile<- ggplot(data=graphw, aes(x=year ,y=wage.share.of.DINA.of.considered.percentiles, group=supp, colour=supp))+
+  geom_line()+
+  geom_point()
+
+ggplotwageshareofDINAofeachpercentile 
+
+## IR- pre tax Factor Income Code
+
+# for-loop to calculate needed variables for each year (2000-2020)
+
+## each individual has lDINA=wDINA+cDINA, 
+## wDINA= individual's wage each year*(Average National Wage Income/average wage income regarding to micro-data)
+## cDINA=individual's capital income each year*(Average National Capital Income/ average capital income in micro-data)
+## DINA=SUM(lDAINA)
+
+
+for (i in c(2000:2019)) {
+  
+  di<- databind1[which(databind1$inc_tax_yr_year_nbr==i),]
+  
+  IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i]<- length(unique(di$snz_ird_uid)) 
+  
+  ## wage source (for Factor Income version)
+  diwage<- di[which(di$inc_tax_yr_income_source_code=="W&S"|di$inc_tax_yr_income_source_code=="C02"|di$inc_tax_yr_income_source_code=="P02"|di$inc_tax_yr_income_source_code=="TPR"|di$inc_tax_yr_income_source_code=="IRD"|di$inc_tax_yr_income_source_code=="SNZ"|di$inc_tax_yr_income_source_code=="C01"|di$inc_tax_yr_income_source_code=="P01"|di$inc_tax_yr_income_source_code=="S01"|di$inc_tax_yr_income_source_code=="S02"),]
+  
+  IRD$totalmicrowage[IRD$inc_tax_yr_year_nbr==i]<- sum(diwage$inc_tax_yr_tot_yr_amt)
+  
+  IRD$averagemicrowage[IRD$inc_tax_yr_year_nbr==i]<- (IRD$totalmicrowage[IRD$inc_tax_yr_year_nbr==i])/(IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # average National Wage
+  IRD$averagenationalwage[IRD$inc_tax_yr_year_nbr==i]<- (IRD$`Compensation Of Employees - received`[IRD$inc_tax_yr_year_nbr==i])/ (IRD$POPULATION[IRD$inc_tax_yr_year_nbr==i])
+  
+  WDINA <- (IRD$averagenationalwage[IRD$inc_tax_yr_year_nbr==i])/(IRD$averagemicrowage[IRD$inc_tax_yr_year_nbr==i])
+  
+  sample1<- aggregate(inc_tax_yr_tot_yr_amt~snz_ird_uid, data=diwage, FUN=sum)
+  
+  sample1$wDINA<- (sample1$inc_tax_yr_tot_yr_amt)*WDINA
+  
+  
+  ## capital source
+  dicapital<- di[which(di$inc_tax_yr_income_source_code=="C00"|di$inc_tax_yr_income_source_code=="S00"|di$inc_tax_yr_income_source_code=="S03"|di$inc_tax_yr_income_source_code=="P00"),]
+  
+  IRD$totalmicrocapitalincome[IRD$inc_tax_yr_year_nbr==i]<- sum(dicapital$inc_tax_yr_tot_yr_amt)
+  IRD$averagemicrocapitalincome[IRD$inc_tax_yr_year_nbr==i]<- (IRD$totalmicrocapitalincome[IRD$inc_tax_yr_year_nbr==i])/(IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # average National Capital income
+  IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i]<-  (IRD$CAPITALincome[IRD$inc_tax_yr_year_nbr==i])/ (IRD$POPULATION[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # DINA scale for capitalincome: CDINA=(Average National Capital Income/average capital income regarding to the micro-data)
+  CDINA <- (IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i])/(IRD$averagemicrocapitalincome[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # individual's weighted capital income using CDINA as a scale
+  sample2<- aggregate(inc_tax_yr_tot_yr_amt~snz_ird_uid, data=dicapital, FUN=sum)
+  sample2$cDINA<- (sample2$inc_tax_yr_tot_yr_amt)*CDINA
+  
+  
+  # lDINA=wDINA+cDINA
+  sample3<- merge(sample1, sample2, by="snz_ird_uid" , all=TRUE)  
+  sample3[is.na(sample3)]<- 0
+  
+  sample3$lDINA<- (sample3$wDINA)+(sample3$cDINA)
+  
+  di$lDINAindividuals<- sample3$lDINA[match(di$snz_ird_uid, sample3$snz_ird_uid)]
+  
+  # lDINA percentiles
+  
+  sample4<- aggregate(lDINAindividuals~snz_ird_uid, data=di, FUN=mean)
+  
+  IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.50)
+  IRD$bottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.90)
+  IRD$bottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.99)
+  
+  di1<- sample3[which(sample3$lDINA<= IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==i]<- (sum(di1$lDINA)/sum(sample3$lDINA))*100
+  
+  di2<- sample3[which(sample3$lDINA<= IRD$bottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]<- (sum(di2$lDINA)/sum(sample3$lDINA))*100
+  
+  
+  di3<- sample3[which(sample3$lDINA <= IRD$bottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]<- (sum(di3$lDINA)/sum(sample3$lDINA))*100
+  
+  IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==i]<- (IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])-(IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==i])
+  
+  IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==i]<- 100-(IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==i]<- 100-(IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  # othertop9percentiles= percentiles90th to 99th
+  IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==i]<- (IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i])-(IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  
+  
+}
+
+
+# visualizing the results:
+
+DINAbottom50percentiles<- c(IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+DINAtop1thpercentile<- c(IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+
+DINAmiddleclass<- c(IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+DINAtop10percentiles<- c(IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==2000:2019])
+year<- c(2000:2018)
+
+
+DINAtop9otherpercentiles<- c(IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+graph<- data.frame(supp=rep(c("DINAbottom50percentiles","DINAtop1thpercentile","DINAmiddleclass","DINAtop10percentiles","DINAtop9otherpercentiles"), each=19),
+                   year=rep(c("2000","2001","2002","2003","2004","2005","2006","2007","2008","2009","2010","2011","2012","2013","2014","2015","2016","2017","2018"),5),
+                   DINApretaxIRfactorIncome=c(IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                  IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                  IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                  IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                  IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==2000:2018]))
+
+
+
+ggplotDINA<- ggplot(data=graph, aes(x=year ,y=DINApretaxIRfactorIncome, group=supp, colour=supp))+
+  geom_line()+
+  geom_point()
+
+
+ggplotDINA
+
+##IR- Pre tax National Income
+
+
+# for-loop to calculate needed variables for each year (2000-2020)
+
+## each individual has lDINA=wDINA+cDINA, 
+## wDINA= individual's wage each year*(Average National Wage Income/average wage income regarding to micro-data)
+## cDINA=individual's capital income each year*(Average National Capital Income/ average capital income in micro-data)
+## DINA=SUM(lDAINA)
+
+for (i in c(2000:2018)) {
+  
+  di<- databind1[which(databind1$inc_tax_yr_year_nbr==i),]
+
+  
+  IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i]<- length(unique(di$snz_ird_uid)) 
+  
+  diincome<- di[which(di$inc_tax_yr_income_source_code=="W&S"|di$inc_tax_yr_income_source_code=="C02"|di$inc_tax_yr_income_source_code=="P02"|di$inc_tax_yr_income_source_code=="TPR"|di$inc_tax_yr_income_source_code=="IRD"|di$inc_tax_yr_income_source_code=="SNZ"|di$inc_tax_yr_income_source_code=="C01"|di$inc_tax_yr_income_source_code=="P01"|di$inc_tax_yr_income_source_code=="S01"|di$inc_tax_yr_income_source_code=="S02"|
+                        di$inc_tax_yr_income_source_code=="C00"|di$inc_tax_yr_income_source_code=="S00"|di$inc_tax_yr_income_source_code=="S03"|di$inc_tax_yr_income_source_code=="P00"),]         
+  
+  
+  totalIRincome<- sum(diincome$inc_tax_yr_tot_yr_amt)
+ 
+   ## Transfers for National Income version
+  ditr<- di[which(di$inc_tax_yr_income_source_code=="CLM"|di$inc_tax_yr_income_source_code=="PEN"|di$inc_tax_yr_income_source_code=="BEN"|di$inc_tax_yr_income_source_code=="PPL"|di$inc_tax_yr_income_source_code=="STU"),]
+  ditr$tax<- 0
+  pentotal<- sum(ditr$inc_tax_yr_tot_yr_amt)
+  
+ 
+  sub<- aggregate(inc_tax_yr_tot_yr_amt~snz_ird_uid, data=diincome, FUN=sum)
+  
+  sub1<- sub[which(sub$inc_tax_yr_tot_yr_amt<=14000),]
+  sub1$tax<- 0.105
+ 
+  sub11<- sum(sub1$inc_tax_yr_tot_yr_amt)
+  taxsub11<- 0.105*sub11
+  
+  sub2<- sub[which(sub$inc_tax_yr_tot_yr_amt>14000 & sub$inc_tax_yr_tot_yr_amt<= 48000),]
+  sub2$tax<- 0.175
+ 
+  sub21<- sum(sub2$inc_tax_yr_tot_yr_amt)
+  taxsub21<- 0.175*sub21
+  
+  sub3<- sub[which(sub$inc_tax_yr_tot_yr_amt>48000 & sub$inc_tax_yr_tot_yr_amt<= 70000),]
+  sub3$tax<- 0.3
+  
+                         sub31<- sum(sub3$inc_tax_yr_tot_yr_amt)
+                         taxsub31<- 0.3*sub31
+  
+  sub4<- sub[which(sub$inc_tax_yr_tot_yr_amt>70000),]
+  sub4$tax<- 0.33
+  
+  sub41<- sum(sub4$inc_tax_yr_tot_yr_amt)
+  taxsub41<- 0.33*sub41
+  
+  totaltax<- taxsub11 + taxsub21 + taxsub31 + taxsub41
+  
+ taxshare<- (pentotal/totaltax)
+
+  sub5<- rbind(sub1,sub2,sub3,sub4)
+  diincome$tax<- sub5$tax[match(diincome$snz_ird_uid, sub5$snz_ird_uid)]
+  
+  ## wage source (for National Income version)
+  diwage<- diincome[which(diincome$inc_tax_yr_income_source_code=="W&S"|diincome$inc_tax_yr_income_source_code=="C02"|diincome$inc_tax_yr_income_source_code=="P02"|diincome$inc_tax_yr_income_source_code=="TPR"|diincome$inc_tax_yr_income_source_code=="IRD"|diincome$inc_tax_yr_income_source_code=="SNZ"|diincome$inc_tax_yr_income_source_code=="C01"|diincome$inc_tax_yr_income_source_code=="P01"|diincome$inc_tax_yr_income_source_code=="S01"|diincome$inc_tax_yr_income_source_code=="S02"),]
+  diwage1<- diwage[which(diwage$tax==0.105),]
+  diwage1$inc_tax_yr_tot_yr_amt<- (diwage1$inc_tax_yr_tot_yr_amt) - (0.105*taxshare*diwage1$inc_tax_yr_tot_yr_amt)
+  
+  diwage2<- diwage[which(diwage$tax==0.175),]
+  diwage2$inc_tax_yr_tot_yr_amt<- (diwage2$inc_tax_yr_tot_yr_amt) - (0.175*taxshare*diwage2$inc_tax_yr_tot_yr_amt)
+  
+  diwage3<- diwage[which(diwage$tax==0.3),]
+  diwage3$inc_tax_yr_tot_yr_amt<- (diwage3$inc_tax_yr_tot_yr_amt) - (0.3*taxshare*diwage3$inc_tax_yr_tot_yr_amt)
+  
+  diwage4<- diwage[which(diwage$tax==0.33),]
+  diwage4$inc_tax_yr_tot_yr_amt<- (diwage4$inc_tax_yr_tot_yr_amt) - (0.33*taxshare*diwage4$inc_tax_yr_tot_yr_amt)
+  
+  diwageTOTAL<- rbind(diwage1,diwage2,diwage3,diwage4,ditr)
+  IRD$totalmicrowage[IRD$inc_tax_yr_year_nbr==i]<- sum(diwageTOTAL$inc_tax_yr_tot_yr_amt)
+  
+  IRD$averagemicrowage[IRD$inc_tax_yr_year_nbr==i]<- (IRD$totalmicrowage[IRD$inc_tax_yr_year_nbr==i])/(IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i])
+  
+  # average National Wage
+  IRD$averagenationalwage[IRD$inc_tax_yr_year_nbr==i]<- (IRD$`Compensation Of Employees - received`[IRD$inc_tax_yr_year_nbr==i])/ (IRD$POPULATION[IRD$inc_tax_yr_year_nbr==i])
+  
+  IRD$WDINA[IRD$inc_tax_yr_year_nbr==i]<- (IRD$averagenationalwage[IRD$inc_tax_yr_year_nbr==i])/(IRD$averagemicrowage[IRD$inc_tax_yr_year_nbr==i])
+  
+  sample1<- aggregate(inc_tax_yr_tot_yr_amt~snz_ird_uid, data=diwageTOTAL, FUN=sum)
+  
+  sample1$wDINA<- (sample1$inc_tax_yr_tot_yr_amt)*WDINA
+  
+  
+  ## capital source
+  dicapital<- diincome[which(diincome$inc_tax_yr_income_source_code=="C00"|diincome$inc_tax_yr_income_source_code=="S00"|diincome$inc_tax_yr_income_source_code=="S03"|diincome$inc_tax_yr_income_source_code=="P00"),]
+  
+  dicapital1<- dicapital[which(dicapital$tax==0.105),]
+  dicapital1$inc_tax_yr_tot_yr_amt<- (dicapital1$inc_tax_yr_tot_yr_amt) - (0.105*taxshare*dicapital1$inc_tax_yr_tot_yr_amt)
+  
+  dicapital2<- dicapital[which(dicapital$tax==0.175),]
+  dicapital2$inc_tax_yr_tot_yr_amt<- (dicapital2$inc_tax_yr_tot_yr_amt) - (0.175*taxshare*dicapital2$inc_tax_yr_tot_yr_amt)
+  
+  dicapital3<- dicapital[which(dicapital$tax==0.3),]
+  dicapital3$inc_tax_yr_tot_yr_amt<- (dicapital3$inc_tax_yr_tot_yr_amt) - (0.3*taxshare*dicapital3$inc_tax_yr_tot_yr_amt)
+  
+  dicapital4<- dicapital[which(dicapital$tax==0.33),]
+  dicapital4$inc_tax_yr_tot_yr_amt<- (dicapital4$inc_tax_yr_tot_yr_amt) - (0.33*taxshare*dicapital4$inc_tax_yr_tot_yr_amt)
+  
+  
+  dicapitalTOTAL<- rbind(dicapital1,dicapital2,dicapital3,dicapital4)
+  
+  IRD$totalmicrocapitalincome[IRD$inc_tax_yr_year_nbr==i]<- sum(dicapitalTOTAL$inc_tax_yr_tot_yr_amt)
+  IRD$averagemicrocapitalincome[IRD$inc_tax_yr_year_nbr==i]<- (IRD$totalmicrocapitalincome[IRD$inc_tax_yr_year_nbr==i])/(IRD$numberofmicroindividuals[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # average National Capital income
+  IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i]<-  (IRD$CAPITALincome[IRD$inc_tax_yr_year_nbr==i])/ (IRD$POPULATION[IRD$inc_tax_yr_year_nbr==i])
+  IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i]
+  
+  # DINA scale for capitalincome: CDINA=(Average National Capital Income/average capital income regarding to the micro-data)
+  IRD$CDINA[IRD$inc_tax_yr_year_nbr==i]<- (IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i])/(IRD$averagemicrocapitalincome[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # individual's weighted capital income using CDINA as a scale
+  sample2<- aggregate(inc_tax_yr_tot_yr_amt~snz_ird_uid, data=dicapitalTOTAL, FUN=sum)
+  sample2$cDINA<- (sample2$inc_tax_yr_tot_yr_amt)* (IRD$averagenationalcapitalincome[IRD$inc_tax_yr_year_nbr==i])/(IRD$averagemicrocapitalincome[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  # lDINA=wDINA+cDINA
+  sample3<- merge(sample1, sample2, by="snz_ird_uid" , all=TRUE)  
+  
+  sample3[is.na(sample3)]<- 0
+  
+  sample3$lDINA<- (sample3$wDINA)+(sample3$cDINA)
+  
+  di$lDINAindividuals<- sample3$lDINA[match(di$snz_ird_uid, sample3$snz_ird_uid)]
+  
+  # lDINA percentiles
+  
+  sample4<- aggregate(lDINAindividuals~snz_ird_uid, data=di, FUN=mean)
+  
+  IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.50)
+  IRD$bottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.90)
+  IRD$bottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]<- quantile(sample4$lDINAindividuals, probs = 0.99)
+  
+  di1<- sample3[which(sample3$lDINA<= IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==i]<- (sum(di1$lDINA)/sum(sample3$lDINA))*100
+  
+  di2<- sample3[which(sample3$lDINA<= IRD$bottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i]<- (sum(di2$lDINA)/sum(sample3$lDINA))*100
+  
+  
+  di3<- sample3[which(sample3$lDINA <= IRD$bottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]),]
+  IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i]<- (sum(di3$lDINA)/sum(sample3$lDINA))*100
+  
+  IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==i]<- (IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])-(IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==i])
+  
+  IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==i]<- 100-(IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==i]<- 100-(IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  # othertop9percentiles= percentiles90th to 99th
+  IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==i]<- (IRD$DINAbottom99thpercentile[IRD$inc_tax_yr_year_nbr==i])-(IRD$DINAbottom90thpercentile[IRD$inc_tax_yr_year_nbr==i])
+  
+  
+  
+  
+  
+}
+## visualizing the results:
+  
+  DINAbottom50percentiles<- c(IRD$bottom50thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+DINAtop1thpercentile<- c(IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+
+DINAmiddleclass<- c(IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+DINAtop10percentiles<- c(IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+DINAtop9otherpercentiles<- c(IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==2000:2018])
+year<- c(2000:2018)
+
+
+graph<- data.frame(supp=rep(c("DINAbottom50percentiles","DINAtop1thpercentile","DINAmiddleclass","DINAtop10percentiles","DINAtop9otherpercentiles"), each=19),
+                   year=rep(c("2000","2001","2002","2003","2004","2005","2006","2007","2008","2009","2010","2011","2012","2013","2014","2015","2016","2017","2018"),5),
+                   DINApretaxIRnationalIncome=c(IRD$DINAbottom50percentiles[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                              IRD$DINAtop1thpercentile[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                              IRD$DINAmiddleclass[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                              IRD$DINAtop10percentiles[IRD$inc_tax_yr_year_nbr==2000:2018],
+                                              IRD$DINAtop9otherpercentiles[IRD$inc_tax_yr_year_nbr==2000:2018]))
+
+
+
+ggplotDINA<- ggplot(data=graph, aes(x=year ,y=DINApretaxIRnationalIncome, group=supp, colour=supp))+
+  geom_line()+
+  geom_point()
+
+
+ggplotDINA
+
+
+
+
+
+
+
+
+ 
